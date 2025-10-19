@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Transfer System - Test Interface</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        h2 {
+            color: #555;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 5px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        input, select {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+        }
+        .result {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .success {
+            border-color: #28a745;
+            background-color: #d4edda;
+        }
+        .error {
+            border-color: #dc3545;
+            background-color: #f8d7da;
+        }
+        .user-list {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .user-card {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            min-width: 200px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🏦 Account Transfer System</h1>
+    
+    <div class="container">
+        <h2>1. Initialize System</h2>
+        <button onclick="createUsers()">Create Sample Users (Alice: $1000, Bob: $500)</button>
+        <button onclick="getUsers()">Refresh User List</button>
+        <div id="usersResult" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>2. Transfer Money</h2>
+        <div>
+            <label>From User ID:</label><br>
+            <input type="text" id="fromUserId" placeholder="Paste user ID here">
+        </div>
+        <div>
+            <label>To User ID:</label><br>
+            <input type="text" id="toUserId" placeholder="Paste user ID here">
+        </div>
+        <div>
+            <label>Amount:</label><br>
+            <input type="number" id="amount" placeholder="Enter amount" min="1">
+        </div>
+        <button onclick="transferMoney()">Transfer Money</button>
+        <div id="transferResult" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>3. Test Scenarios</h2>
+        <button onclick="testSuccessfulTransfer()">Test Successful Transfer ($150)</button>
+        <button onclick="testInsufficientBalance()">Test Insufficient Balance ($900)</button>
+        <button onclick="testInvalidAccount()">Test Invalid Account</button>
+        <div id="testResult" class="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        let users = [];
+
+        async function apiCall(method, endpoint, data = null) {
+            try {
+                const options = {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                };
+                if (data) {
+                    options.body = JSON.stringify(data);
+                }
+                
+                const response = await fetch(`http://localhost:3000${endpoint}`, options);
+                const result = await response.json();
+                
+                return {
+                    success: response.ok,
+                    status: response.status,
+                    data: result
+                };
+            } catch (error) {
+                return {
+                    success: false,
+                    error: error.message
+                };
+            }
+        }
+
+        function showResult(elementId, result, isSuccess = true) {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.className = `result ${isSuccess ? 'success' : 'error'}`;
+            
+            if (result.success) {
+                element.textContent = `Status: ${result.status}\n\n${JSON.stringify(result.data, null, 2)}`;
+            } else {
+                element.textContent = `Error: ${result.error || result.data?.message || 'Unknown error'}`;
+            }
+        }
+
+        async function createUsers() {
+            const result = await apiCall('POST', '/create-users');
+            showResult('usersResult', result);
+            if (result.success) {
+                users = result.data.users;
+                updateUserList();
+            }
+        }
+
+        async function getUsers() {
+            const result = await apiCall('GET', '/users');
+            showResult('usersResult', result);
+            if (result.success) {
+                users = result.data.users;
+                updateUserList();
+            }
+        }
+
+        function updateUserList() {
+            const usersDiv = document.getElementById('usersResult');
+            if (users.length > 0) {
+                usersDiv.innerHTML = users.map(user => 
+                    `<div class="user-card">
+                        <strong>${user.name}</strong><br>
+                        Balance: $${user.balance}<br>
+                        ID: <code>${user._id}</code>
+                    </div>`
+                ).join('');
+            }
+        }
+
+        async function transferMoney() {
+            const fromUserId = document.getElementById('fromUserId').value;
+            const toUserId = document.getElementById('toUserId').value;
+            const amount = parseFloat(document.getElementById('amount').value);
+
+            if (!fromUserId || !toUserId || !amount) {
+                showResult('transferResult', { success: false, error: 'Please fill in all fields' }, false);
+                return;
+            }
+
+            const result = await apiCall('POST', '/transfer', {
+                fromUserId: fromUserId,
+                toUserId: toUserId,
+                amount: amount
+            });
+
+            showResult('transferResult', result, result.success);
+            
+            if (result.success) {
+                // Refresh user list to show updated balances
+                getUsers();
+            }
+        }
+
+        async function testSuccessfulTransfer() {
+            if (users.length < 2) {
+                showResult('testResult', { success: false, error: 'Please create users first' }, false);
+                return;
+            }
+
+            const result = await apiCall('POST', '/transfer', {
+                fromUserId: users[0]._id,
+                toUserId: users[1]._id,
+                amount: 150
+            });
+
+            showResult('testResult', result, result.success);
+            if (result.success) {
+                getUsers();
+            }
+        }
+
+        async function testInsufficientBalance() {
+            if (users.length < 2) {
+                showResult('testResult', { success: false, error: 'Please create users first' }, false);
+                return;
+            }
+
+            const result = await apiCall('POST', '/transfer', {
+                fromUserId: users[0]._id,
+                toUserId: users[1]._id,
+                amount: 900
+            });
+
+            showResult('testResult', result, result.success);
+        }
+
+        async function testInvalidAccount() {
+            const result = await apiCall('POST', '/transfer', {
+                fromUserId: 'invalid_id',
+                toUserId: 'invalid_id',
+                amount: 100
+            });
+
+            showResult('testResult', result, result.success);
+        }
+
+        // Load users on page load
+        window.onload = function() {
+            getUsers();
+        };
+    </script>
+</body>
+</html>
